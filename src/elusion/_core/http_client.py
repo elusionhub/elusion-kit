@@ -1,7 +1,7 @@
 """HTTP client with retry logic and error handling."""
 
 import json
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Iterator, Union
 from dataclasses import dataclass
 import httpx
 
@@ -48,6 +48,76 @@ class HTTPResponse:
         return 500 <= self.status_code < 600
 
 
+@dataclass
+class StreamingHTTPResponse:
+    """Response from a streaming HTTP request."""
+
+    status_code: int
+    headers: Dict[str, str]
+    url: str
+    request_id: Optional[str] = None
+    _response: Optional[httpx.Response] = None
+
+    def is_success(self) -> bool:
+        """Check if the response indicates success."""
+        return 200 <= self.status_code < 300
+
+    def is_client_error(self) -> bool:
+        """Check if the response indicates a client error."""
+        return 400 <= self.status_code < 500
+
+    def is_server_error(self) -> bool:
+        """Check if the response indicates a server error."""
+        return 500 <= self.status_code < 600
+
+    def iter_bytes(self, chunk_size: int = 1024) -> Iterator[bytes]:
+        """Iterate over response content as bytes."""
+        if self._response:
+            try:
+                yield from self._response.iter_bytes(chunk_size=chunk_size)
+            finally:
+                self._response.close()
+
+    def iter_text(
+        self, chunk_size: int = 1024, encoding: Optional[str] = None
+    ) -> Iterator[str]:
+        """Iterate over response content as text."""
+        if self._response:
+            try:
+                yield from self._response.iter_text(chunk_size=chunk_size)
+            finally:
+                self._response.close()
+
+    def iter_lines(self) -> Iterator[str]:
+        """Iterate over response content line by line."""
+        if self._response:
+            try:
+                yield from self._response.iter_lines()
+            finally:
+                self._response.close()
+
+    def iter_json_lines(self, chunk_size: int = 1024) -> Iterator[Any]:
+        """Iterate over response content as JSON lines (JSONL format)."""
+        for line in self.iter_lines():
+            line = line.strip()
+            if line:
+                try:
+                    yield json.loads(line)
+                except json.JSONDecodeError as e:
+                    raise ValueError(f"Invalid JSON line: {line[:100]}... - {e}")
+
+    def close(self) -> None:
+        """Close the streaming response."""
+        if self._response:
+            self._response.close()
+
+    def __enter__(self) -> "StreamingHTTPResponse":
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.close()
+
+
 class HTTPClient:
     """HTTP client with comprehensive error handling and retry logic."""
 
@@ -78,7 +148,11 @@ class HTTPClient:
         retry_config = RetryConfig(
             max_attempts=self.config.max_retries + 1,  # +1 for initial attempt
             base_delay=self.config.retry_delay,
-            strategy=(RetryStrategy.EXPONENTIAL_BACKOFF if self.config.retry_exponential_backoff else RetryStrategy.FIXED),
+            strategy=(
+                RetryStrategy.EXPONENTIAL_BACKOFF
+                if self.config.retry_exponential_backoff
+                else RetryStrategy.FIXED
+            ),
             jitter=self.config.retry_jitter,
         )
         self.retry_handler = RetryHandler(retry_config)
@@ -120,7 +194,9 @@ class HTTPClient:
 
         return f"{self.base_url}/{endpoint}"
 
-    def prepare_headers(self, additional_headers: Optional[HeadersDict] = None) -> HeadersDict:
+    def prepare_headers(
+        self, additional_headers: Optional[HeadersDict] = None
+    ) -> HeadersDict:
         """Prepare headers for a request.
 
         Args:
@@ -141,7 +217,9 @@ class HTTPClient:
 
         return headers
 
-    def prepare_params(self, params: Optional[ParamsDict] = None) -> Optional[Dict[str, str]]:
+    def prepare_params(
+        self, params: Optional[ParamsDict] = None
+    ) -> Optional[Dict[str, str]]:
         """Prepare query parameters for a request.
 
         Args:
@@ -170,7 +248,9 @@ class HTTPClient:
             ServiceAPIError: If the response indicates an error
         """
         # Extract request ID if available
-        request_id = response.headers.get("x-request-id") or response.headers.get("request-id")
+        request_id = response.headers.get("x-request-id") or response.headers.get(
+            "request-id"
+        )
 
         http_response = HTTPResponse(
             status_code=response.status_code,
@@ -189,6 +269,59 @@ class HTTPClient:
         self._handle_error_response(http_response, endpoint)
 
         return http_response  # This line should never be reached
+
+    def _handle_streaming_response(
+        self, response: httpx.Response, endpoint: str
+    ) -> StreamingHTTPResponse:
+        """Handle and validate streaming HTTP response.
+
+        Args:
+            response: Raw httpx response
+            endpoint: The endpoint that was called
+
+        Returns:
+            Processed streaming HTTP response
+
+        Raises:
+            ServiceAPIError: If the response indicates an error
+        """
+        # Extract request ID if available
+        request_id = response.headers.get("x-request-id") or response.headers.get(
+            "request-id"
+        )
+
+        streaming_response = StreamingHTTPResponse(
+            status_code=response.status_code,
+            headers=dict(response.headers),
+            url=str(response.url),
+            request_id=request_id,
+            _response=response,
+        )
+
+        # Handle error responses immediately for streaming
+        if not streaming_response.is_success():
+            # For streaming errors, we need to read the content first
+            try:
+                error_content = response.content
+                error_text = response.text
+            except:
+                error_content = b""
+                error_text = ""
+
+            # Create a temporary HTTPResponse for error handling
+            temp_response = HTTPResponse(
+                status_code=response.status_code,
+                headers=dict(response.headers),
+                content=error_content,
+                text=error_text,
+                url=str(response.url),
+                request_id=request_id,
+            )
+
+            response.close()  # Close the streaming response
+            self._handle_error_response(temp_response, endpoint)
+
+        return streaming_response
 
     def _handle_error_response(self, response: HTTPResponse, endpoint: str) -> None:
         """Handle error responses and raise appropriate exceptions.
@@ -236,7 +369,9 @@ class HTTPClient:
             endpoint=endpoint,
         )
 
-    def _extract_error_message(self, error_data: Dict[str, Any], status_code: int) -> str:
+    def _extract_error_message(
+        self, error_data: Dict[str, Any], status_code: int
+    ) -> str:
         """Extract error message from response data."""
         # Common error message fields
         for field in ["message", "error", "error_description", "detail", "msg"]:
@@ -267,7 +402,9 @@ class HTTPClient:
 
         return None
 
-    def _extract_retry_after(self, headers: Dict[str, str], error_data: Dict[str, Any]) -> Optional[int]:
+    def _extract_retry_after(
+        self, headers: Dict[str, str], error_data: Dict[str, Any]
+    ) -> Optional[int]:
         """Extract retry-after value from headers or response data."""
         # Check Retry-After header
         retry_after = headers.get("retry-after") or headers.get("Retry-After")
@@ -298,7 +435,8 @@ class HTTPClient:
         json_data: Optional[JSONData] = None,
         headers: Optional[HeadersDict] = None,
         timeout: Optional[float] = None,
-    ) -> HTTPResponse:
+        stream: bool = False,
+    ) -> Union[HTTPResponse, StreamingHTTPResponse]:
         """Make an HTTP request with retry logic.
 
         Args:
@@ -309,12 +447,13 @@ class HTTPClient:
             json_data: JSON request body data
             headers: Additional headers
             timeout: Request timeout override
+            stream: Whether to stream the response
 
         Returns:
-            HTTP response
+            HTTP response (streaming or regular)
         """
 
-        def make_request() -> HTTPResponse:
+        def make_request() -> Union[HTTPResponse, StreamingHTTPResponse]:
             url = self.build_url(endpoint)
             prepared_headers = self.prepare_headers(headers)
             prepared_params = self.prepare_params(params)
@@ -327,17 +466,31 @@ class HTTPClient:
                 request_data = data
 
             try:
-                response = self._client.request(
-                    method=method,
-                    url=url,
-                    params=prepared_params,
-                    json=request_data,
-                    headers=prepared_headers,
-                    timeout=timeout or self.config.timeout,
-                )
-                return self._handle_response(response, endpoint)
+                if stream:
+                    # For streaming, we need to use the stream method
+                    with self._client.stream(
+                        method=method,
+                        url=url,
+                        params=prepared_params,
+                        json=request_data,
+                        headers=prepared_headers,
+                        timeout=timeout or self.config.timeout,
+                    ) as response:
+                        return self._handle_streaming_response(response, endpoint)
+                else:
+                    response = self._client.request(
+                        method=method,
+                        url=url,
+                        params=prepared_params,
+                        json=request_data,
+                        headers=prepared_headers,
+                        timeout=timeout or self.config.timeout,
+                    )
+                    return self._handle_response(response, endpoint)
             except httpx.TimeoutException:
-                raise ServiceTimeoutError(self.service_name, timeout or self.config.timeout)
+                raise ServiceTimeoutError(
+                    self.service_name, timeout or self.config.timeout
+                )
             except httpx.ConnectError as e:
                 raise ServiceAPIError(
                     f"Failed to connect to {self.service_name}",
@@ -345,7 +498,13 @@ class HTTPClient:
                     endpoint=endpoint,
                 ) from e
 
-        return self.retry_handler.execute_with_retry(make_request, f"{method} {endpoint}")
+        # Note: Streaming requests shouldn't be retried as they consume the stream
+        if stream:
+            return make_request()
+        else:
+            return self.retry_handler.execute_with_retry(
+                make_request, f"{method} {endpoint}"
+            )
 
     def get(
         self,
@@ -354,9 +513,17 @@ class HTTPClient:
         params: Optional[ParamsDict] = None,
         headers: Optional[HeadersDict] = None,
         timeout: Optional[float] = None,
-    ) -> HTTPResponse:
+        stream: bool = False,
+    ) -> Union[HTTPResponse, StreamingHTTPResponse]:
         """Make a GET request."""
-        return self.request("GET", endpoint, params=params, headers=headers, timeout=timeout)
+        return self.request(
+            "GET",
+            endpoint,
+            params=params,
+            headers=headers,
+            timeout=timeout,
+            stream=stream,
+        )
 
     def post(
         self,
@@ -367,7 +534,8 @@ class HTTPClient:
         params: Optional[ParamsDict] = None,
         headers: Optional[HeadersDict] = None,
         timeout: Optional[float] = None,
-    ) -> HTTPResponse:
+        stream: bool = False,
+    ) -> Union[HTTPResponse, StreamingHTTPResponse]:
         """Make a POST request."""
         return self.request(
             "POST",
@@ -377,6 +545,7 @@ class HTTPClient:
             params=params,
             headers=headers,
             timeout=timeout,
+            stream=stream,
         )
 
     def put(
@@ -388,7 +557,8 @@ class HTTPClient:
         params: Optional[ParamsDict] = None,
         headers: Optional[HeadersDict] = None,
         timeout: Optional[float] = None,
-    ) -> HTTPResponse:
+        stream: bool = False,
+    ) -> Union[HTTPResponse, StreamingHTTPResponse]:
         """Make a PUT request."""
         return self.request(
             "PUT",
@@ -398,6 +568,7 @@ class HTTPClient:
             params=params,
             headers=headers,
             timeout=timeout,
+            stream=stream,
         )
 
     def patch(
@@ -409,7 +580,8 @@ class HTTPClient:
         params: Optional[ParamsDict] = None,
         headers: Optional[HeadersDict] = None,
         timeout: Optional[float] = None,
-    ) -> HTTPResponse:
+        stream: bool = False,
+    ) -> Union[HTTPResponse, StreamingHTTPResponse]:
         """Make a PATCH request."""
         return self.request(
             "PATCH",
@@ -419,6 +591,7 @@ class HTTPClient:
             params=params,
             headers=headers,
             timeout=timeout,
+            stream=stream,
         )
 
     def delete(
@@ -428,9 +601,17 @@ class HTTPClient:
         params: Optional[ParamsDict] = None,
         headers: Optional[HeadersDict] = None,
         timeout: Optional[float] = None,
-    ) -> HTTPResponse:
+        stream: bool = False,
+    ) -> Union[HTTPResponse, StreamingHTTPResponse]:
         """Make a DELETE request."""
-        return self.request("DELETE", endpoint, params=params, headers=headers, timeout=timeout)
+        return self.request(
+            "DELETE",
+            endpoint,
+            params=params,
+            headers=headers,
+            timeout=timeout,
+            stream=stream,
+        )
 
     def close(self) -> None:
         """Close the HTTP client and clean up resources."""
