@@ -1,0 +1,157 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elusion-jokes"
+dynamic = ["version"]
+description = "A developer-friendly Python SDK for the Sample APIs Jokes service - built with the Elusion framework"
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Elusion Hub", email = "elusion.lab@gmail.com" }]
+maintainers = [{ name = "Elusion Hub", email = "elusion.lab@gmail.com" }]
+keywords = [
+    "jokes",
+    "api",
+    "sdk",
+    "humor",
+    "entertainment",
+    "elusion",
+    "sample-apis",
+    "funny",
+    "comedy"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Games/Entertainment",
+    "Typing :: Typed",
+]
+requires-python = ">=3.13"
+dependencies = [
+    "elusion>=1.0.0", # Depends on the Elusion framework
+    "httpx>=0.28.1",
+    "pydantic>=2.5.0",
+    "typing-extensions>=4.8.0",
+]
+
+[project.optional-dependencies]
+# Development dependencies
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.10.0",
+    "pytest-httpx>=0.21.0",
+    "respx>=0.20.0",
+    "mypy>=1.7.0",
+    "flake8>=6.0.0",
+    "black>=23.9.0",
+    "isort>=5.12.0",
+    "pre-commit>=3.5.0",
+]
+# Documentation dependencies
+docs = [
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.4.0",
+    "mkdocstrings[python]>=0.24.0",
+]
+# Testing dependencies
+test = ["pytest-httpx>=0.21.0", "respx>=0.20.0", "faker>=19.0.0"]
+# Example dependencies
+examples = ["rich>=13.0.0", "typer>=0.9.0"]
+
+[project.urls]
+Homepage = "https://github.com/elusionhub/elusion-jokes"
+Documentation = "https://elusion-jokes.readthedocs.io"
+Repository = "https://github.com/elusionhub/elusion-jokes.git"
+Issues = "https://github.com/elusionhub/elusion-jokes/issues"
+Changelog = "https://github.com/elusionhub/elusion-jokes/blob/main/CHANGELOG.md"
+"Sample APIs" = "https://sampleapis.com/"
+
+[tool.hatch.version]
+path = "src/elusion/jokes/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/elusion"]
+
+[tool.hatch.build]
+include = [
+    "src/elusion/jokes/**/*.py",
+    "src/elusion/jokes/py.typed",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+]
+exclude = ["tests/", "examples/"]
+
+# Pytest configuration
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--cov=elusion.jokes",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-fail-under=85"
+]
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests",
+    "api: API integration tests",
+    "slow: Slow running tests",
+]
+
+# Coverage configuration
+[tool.coverage.run]
+source = ["src/elusion/jokes"]
+omit = ["tests/*", "examples/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+
+# MyPy configuration
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_any_generics = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+# Flake8 configuration
+[tool.flake8]
+max-line-length = 120
+extend-ignore = ["E203", "W503"]
+exclude = ["__pycache__", ".git", "build", "dist"]
+
+# isort configuration
+[tool.isort]
+profile = "black"
+line_length = 120
+known_first_party = ["elusion"]
+
+# Black configuration
+[tool.black]
+line-length = 120
+target-version = ["py313"]
