@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "elusion-kit"
 dynamic = ["version"]
-description = "A modern Python framework for building high-quality, type-safe API SDKs with comprehensive error handling and retry logic"
+description = "A Python framework for building high-quality, type-safe API SDKs with comprehensive error handling and retry logic"
 readme = "README.md"
 license = "MIT"
 authors = [{ name = "Elusion Hub", email = "elusion.lab@gmail.com" }]
