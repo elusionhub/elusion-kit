@@ -12,7 +12,7 @@ This guide will help you install Elusion and build your first SDK.
 ### Install Elusion
 
 ```bash
-pip install elusion
+pip install elusion-kit
 ```
 
 ### Development Installation
@@ -116,7 +116,7 @@ class ExampleSDKClient(BaseServiceClient):
 
 ```python
 # Usage
-from my_sdk import ExampleSDKClient
+from elusion.my_sdk import ExampleSDKClient
 
 client = ExampleSDKClient("your-api-key")
 
