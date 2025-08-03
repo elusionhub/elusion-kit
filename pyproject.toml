@@ -279,12 +279,12 @@ filename = "src/elusion/__init__.py"
 search = '__version__ = "{current_version}"'
 replace = '__version__ = "{new_version}"'
 
-[[tool.bumpversion.files]]
-filename = "README.md"
-search = "pip install elusion=={current_version}"
-replace = "pip install elusion=={new_version}"
+# [[tool.bumpversion.files]]
+# filename = "README.md"
+# search = "pip install elusion=={current_version}"
+# replace = "pip install elusion=={new_version}"
 
-[[tool.bumpversion.files]]
-filename = "docs/installation.md"
-search = "elusion=={current_version}"
-replace = "elusion=={new_version}"
+# [[tool.bumpversion.files]]
+# filename = "docs/installation.md"
+# search = "elusion=={current_version}"
+# replace = "elusion=={new_version}"
