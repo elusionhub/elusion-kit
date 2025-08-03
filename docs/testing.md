@@ -11,7 +11,7 @@ Learn how to test SDKs built with the Elusion framework using the provided testi
 import pytest
 from elusion._core.configuration import ClientConfiguration, ServiceSettings
 from elusion._core.authentication import APIKeyAuthenticator
-from my_sdk import ExampleSDKClient
+from elusion.my_sdk import ExampleSDKClient
 
 @pytest.fixture
 def test_config():
@@ -115,7 +115,7 @@ def test_api_key_authentication():
     assert headers["Authorization"] == "Bearer test-key-123"
 
 def test_custom_authentication():
-    from my_sdk.authentication import CustomAuthenticator
+    from elusion.my_sdk.authentication import CustomAuthenticator
 
     auth = CustomAuthenticator("key", "secret")
     headers = auth.get_auth_headers()
@@ -148,7 +148,7 @@ def test_authentication_headers_sent(client):
 ```python
 import pytest
 from pydantic import ValidationError
-from my_sdk.models import User
+from elusion.my_sdk.models import User
 
 def test_user_model_valid():
     user = User(

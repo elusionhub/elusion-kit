@@ -231,7 +231,7 @@ Elusion provides testing utilities:
 ```python
 import pytest
 from elusion._core.configuration import ClientConfiguration
-from my_sdk import MySDKClient
+from elusion.my_sdk import MySDKClient
 
 @pytest.fixture
 def client():
